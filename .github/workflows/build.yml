@@ -18,7 +18,7 @@ jobs:
   tests:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Also checks that rom/audio-ocarina.patch still applies to the pinned zeldaret/oot commit
       - name: Set up the decomp with the hack applied
         run: tools/setup-oot.sh
@@ -29,11 +29,11 @@ jobs:
     # Oldest supported runner, so the plugin runs on distributions with an older glibc
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: tools/setup-oot.sh
       - name: Build
         run: make -C emulator/mupen64plus-input-ocarina -j"$(nproc)" package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-linux
           path: emulator/mupen64plus-input-ocarina/build/zelda-oot-real-ocarina-mupen64plus-linux-x86_64.tar.gz
@@ -41,7 +41,7 @@ jobs:
   plugin-windows:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: tools/setup-oot.sh
       - name: Install llvm-mingw
         run: |
@@ -50,7 +50,7 @@ jobs:
           echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
       - name: Build
         run: make -C emulator/mupen64plus-input-ocarina CC=x86_64-w64-mingw32-gcc -j"$(nproc)" package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-windows
           path: emulator/mupen64plus-input-ocarina/build-win64/zelda-oot-real-ocarina-mupen64plus-windows-x64.zip
@@ -58,7 +58,7 @@ jobs:
   firmware:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: |
           sudo apt-get update
@@ -66,7 +66,7 @@ jobs:
             libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
       - name: Cache Pico SDK
         id: sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/pico-sdk
           key: pico-sdk-${{ env.PICO_SDK_VERSION }}
@@ -82,7 +82,7 @@ jobs:
           mkdir -p pkg/oru-firmware
           cp firmware/pico/dist/*.uf2 firmware/pico/README.md firmware/pico/README.es.md pkg/oru-firmware/
           cd pkg && python3 -m zipfile -c oru-firmware.zip oru-firmware
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware
           path: pkg/oru-firmware.zip
@@ -94,7 +94,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
       - name: Release notes
@@ -111,7 +111,7 @@ jobs:
 
           See the [README](https://github.com/${{ github.repository }}#readme) for details. No ROM is included.
           EOF
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           body_path: notes.md
           files: |
