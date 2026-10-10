@@ -1,0 +1,726 @@
+diff --git a/Makefile b/Makefile
+index ea4b897fc..b025efbd9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -17,6 +17,18 @@ SHELL = /usr/bin/env bash
+ COMPARE ?= 1
+ # If NON_MATCHING is 1, define the NON_MATCHING C flag when building. Set to 1 when modding.
+ NON_MATCHING ?= 0
++# If AUDIO_OCARINA is 1, build the Audio Ocarina (Port 4 audio input) hack into build/$(VERSION)-audio-ocarina.
++# The ROM no longer matches, so COMPARE is forced to 0.
++AUDIO_OCARINA ?= 0
++# If AUDIO_OCARINA_TEST is 1, build the hack with debugger-driven test hooks into build/$(VERSION)-audio-ocarina-test.
++AUDIO_OCARINA_TEST ?= 0
++ifeq ($(AUDIO_OCARINA_TEST),1)
++  override AUDIO_OCARINA := 1
++endif
++ifeq ($(AUDIO_OCARINA),1)
++  # The hack targets the English (US) N64 release
++  REGION ?= US
++endif
+ # If ORIG_COMPILER is 1, compile with QEMU_IRIX and the original compiler.
+ ORIG_COMPILER ?= 0
+ # If COMPILER is "gcc", compile with GCC instead of IDO.
+@@ -214,7 +226,18 @@ ifeq ($(NON_MATCHING),1)
+   COMPARE := 0
+ endif
+ 
+-BUILD_DIR := build/$(VERSION)
++ifeq ($(AUDIO_OCARINA),1)
++  CPP_DEFINES += -DAUDIO_OCARINA=1 -DAUDIO_OCARINA_TEST=$(AUDIO_OCARINA_TEST)
++  COMPARE := 0
++  ifeq ($(AUDIO_OCARINA_TEST),1)
++    BUILD_DIR := build/$(VERSION)-audio-ocarina-test
++  else
++    BUILD_DIR := build/$(VERSION)-audio-ocarina
++  endif
++else
++  CPP_DEFINES += -DAUDIO_OCARINA=0 -DAUDIO_OCARINA_TEST=0
++  BUILD_DIR := build/$(VERSION)
++endif
+ EXPECTED_DIR := expected/$(BUILD_DIR)
+ BASEROM_DIR := baseroms/$(VERSION)
+ EXTRACTED_DIR := extracted/$(VERSION)
+diff --git a/spec/spec b/spec/spec
+index d526bef51..144491b06 100644
+--- a/spec/spec
++++ b/spec/spec
+@@ -631,6 +631,10 @@ beginseg
+     include "$(BUILD_DIR)/src/code/listalloc.o"
+     include "$(BUILD_DIR)/src/code/main.o"
+     include "$(BUILD_DIR)/src/code/padmgr.o"
++#if AUDIO_OCARINA
++    include "$(BUILD_DIR)/src/code/audio_ocarina_filter.o"
++    include "$(BUILD_DIR)/src/code/audio_ocarina_input.o"
++#endif
+     include "$(BUILD_DIR)/src/code/sched.o"
+     include "$(BUILD_DIR)/src/code/speed_meter.o"
+     include "$(BUILD_DIR)/src/code/sys_cfb.o"
+diff --git a/src/audio/game/general.c b/src/audio/game/general.c
+index d0ff41fff..800736eb0 100644
+--- a/src/audio/game/general.c
++++ b/src/audio/game/general.c
+@@ -13,6 +13,9 @@
+ #include "versions.h"
+ #include "audio.h"
+ #include "ocarina.h"
++#if AUDIO_OCARINA
++#include "audio_ocarina_input.h"
++#endif
+ 
+ #define ABS_ALT(x) ((x) < 0 ? -(x) : (x))
+ 
+@@ -1286,6 +1289,16 @@ void AudioOcarina_ReadControllerInput(void) {
+     sOcarinaInputButtonPrev = ocarinaInputButtonPrev;
+     sOcarinaInputStickAdj.x = input->rel.stick_x;
+     sOcarinaInputStickAdj.y = input->rel.stick_y;
++
++#if AUDIO_OCARINA
++    // While listening to the Port 4 audio device, the controller's ocarina inputs (A/C, R/Z, stick) are replaced by
++    // the notes accepted from the device, replayed as button presses
++    if (AudioOcarinaInput_IsListening()) {
++        sOcarinaInputButtonCur = AudioOcarinaInput_GetInjectedButtons();
++        sOcarinaInputStickAdj.x = 0;
++        sOcarinaInputStickAdj.y = 0;
++    }
++#endif
+ }
+ 
+ /**
+@@ -1733,8 +1746,16 @@ void AudioOcarina_PlayControllerInput(UNUSED u8 arg0) {
+             AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, SFX_CHANNEL_OCARINA, 7, sOcarinaInstrumentId - 1);
+             // Sets pitch to io port 5
+             AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, SFX_CHANNEL_OCARINA, 5, sCurOcarinaPitch);
++#if AUDIO_OCARINA
++            // The real instrument is already audible, do not play the note again
++            if (!AudioOcarinaInput_IsListening()) {
++                Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, &sCurOcarinaBendFreq,
++                                     &sRelativeOcarinaVolume, &gSfxDefaultReverb);
++            }
++#else
+             Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, &sCurOcarinaBendFreq, &sRelativeOcarinaVolume,
+                                  &gSfxDefaultReverb);
++#endif
+         } else if ((sPrevOcarinaPitch != OCARINA_PITCH_NONE) && (sCurOcarinaPitch == OCARINA_PITCH_NONE)) {
+             // Stops ocarina sound when transitioning from playing to not playing a note
+             Audio_StopSfxById(NA_SE_OC_OCARINA);
+@@ -2236,6 +2257,9 @@ void AudioOcarina_Update(void) {
+     sOcarinaUpdateTaskStart = gAudioCtx.totalTaskCount;
+     if (sOcarinaInstrumentId != OCARINA_INSTRUMENT_OFF) {
+         if (sIsOcarinaInputEnabled == true) {
++#if AUDIO_OCARINA
++            AudioOcarinaInput_TickInjector();
++#endif
+             AudioOcarina_ReadControllerInput();
+         }
+ 
+diff --git a/src/code/padmgr.c b/src/code/padmgr.c
+index e8d063f97..6731f82b1 100644
+--- a/src/code/padmgr.c
++++ b/src/code/padmgr.c
+@@ -37,6 +37,9 @@
+ #include "terminal.h"
+ #include "translation.h"
+ #include "line_numbers.h"
++#if AUDIO_OCARINA
++#include "audio_ocarina_input.h"
++#endif
+ 
+ #define PADMGR_LOG(controllerNum, msg)                                                                \
+     if (DEBUG_FEATURES) {                                                                             \
+@@ -383,6 +386,11 @@ void PadMgr_HandleRetrace(PadMgr* padMgr) {
+     osRecvMesg(serialEventQueue, NULL, OS_MESG_BLOCK);
+     osContGetQuery(padMgr->padStatus);
+ 
++#if AUDIO_OCARINA
++    // Port 4 Audio Ocarina traffic, only while audio mode is active
++    AudioOcarinaInput_SiUpdate(serialEventQueue);
++#endif
++
+     PadMgr_ReleaseSerialEventQueue(padMgr, serialEventQueue);
+ 
+     {
+diff --git a/src/code/z_message.c b/src/code/z_message.c
+index 7552c9970..8e37a0ce5 100644
+--- a/src/code/z_message.c
++++ b/src/code/z_message.c
+@@ -26,6 +26,10 @@
+ #include "save.h"
+ 
+ #include "assets/textures/parameter_static/parameter_static.h"
++#if AUDIO_OCARINA
++#include "audio_ocarina_input.h"
++#include "dma.h"
++#endif
+ 
+ #pragma increment_block_number "gc-eu:128 gc-eu-mq:128 gc-jp:0 gc-jp-ce:0 gc-jp-mq:0 gc-us:0 gc-us-mq:0 ntsc-1.0:16" \
+                                "ntsc-1.1:16 ntsc-1.2:16 pal-1.0:0 pal-1.1:0"
+@@ -3037,6 +3041,504 @@ void Message_SetView(View* view) {
+ #define DRAW_TEXT(play, gfx, isCredits) Message_DrawText(play, gfx)
+ #endif
+ 
++#if AUDIO_OCARINA
++// Audio Ocarina UI: prompt/status text and, in free play, a staff showing the accepted notes
++
++#define AOC_TEXT_SCALE 0.75f
++#define AOC_TEXT_RIGHT_XPOS 286
++#define AOC_TEXT_YPOS 126
++#define AOC_OCTAVE_TEXT_YPOS 112
++#define AOC_STAFF_XPOS 34
++#define AOC_STAFF_YPOS 142
++#define AOC_STAFF_WIDTH 256
++#define AOC_STAFF_HEIGHT 64
++#define AOC_STAFF_ALPHA 180
++#define AOC_MESSAGE_STATIC_OCARINA_INDEX 2 // index of the ocarina textbox texture in message_static
++#define AOC_GLYPH_SLOTS 40
++
++static const char sAudioOcarinaPromptText[] = "D-Pad Up: Audio";
++static const char sAudioOcarinaListeningText[] = "Listening...  B: Cancel";
++static const char sAudioOcarinaOctaveText[] = "D-Pad: Octave ";
++static const char sAudioOcarinaErrorText[] = "Audio device not found.";
++
++static u64 sAudioOcarinaGlyphTex[AOC_GLYPH_SLOTS][FONT_CHAR_TEX_SIZE / sizeof(u64)];
++static u8 sAudioOcarinaGlyphSlot[0x80 - ' ']; // 0 = not loaded, else slot + 1
++static u8 sAudioOcarinaGlyphCount = 0;
++
++/**
++ * Returns the texture of an ASCII character of the game font, loading it from the ROM on first use.
++ *
++ * On the N64 most assets stay in the cartridge ROM and must be copied to RAM (with a DMA) before the graphics chip can
++ * use them. The message system normally only loads the glyphs of the message being shown, into a buffer it reuses for
++ * every message, so our texts cannot rely on it. Each glyph needed here is copied once from nes_font_static (the
++ * English font, one 4-bit intensity texture per character in ASCII order starting at ' ') into
++ * sAudioOcarinaGlyphTex, and remembered in sAudioOcarinaGlyphSlot. At most AOC_GLYPH_SLOTS different characters fit.
++ *
++ * DMA_REQUEST_SYNC blocks until the copy is done; that only happens the first time a character is drawn.
++ *
++ * @param c printable ASCII character (' '..0x7F)
++ * @return pointer to the glyph texture in RAM, or NULL if `c` is not printable or the glyph cache is full
++ */
++void* Message_GetAudioOcarinaGlyph(char c) {
++    u8 index = c - ' ';
++
++    if (index >= ARRAY_COUNT(sAudioOcarinaGlyphSlot)) {
++        return NULL;
++    }
++    if (sAudioOcarinaGlyphSlot[index] == 0) {
++        if (sAudioOcarinaGlyphCount >= AOC_GLYPH_SLOTS) {
++            return NULL;
++        }
++        DMA_REQUEST_SYNC(sAudioOcarinaGlyphTex[sAudioOcarinaGlyphCount],
++                         (uintptr_t)_nes_font_staticSegmentRomStart + index * FONT_CHAR_TEX_SIZE, FONT_CHAR_TEX_SIZE,
++                         "../z_message_PAL.c", __LINE__);
++        sAudioOcarinaGlyphCount++;
++        sAudioOcarinaGlyphSlot[index] = sAudioOcarinaGlyphCount;
++    }
++    return sAudioOcarinaGlyphTex[sAudioOcarinaGlyphSlot[index] - 1];
++}
++
++/**
++ * Measures the width a string will have when drawn with Message_DrawAudioOcarinaString(), using the game's
++ * proportional font widths (sFontWidths) scaled by AOC_TEXT_SCALE. Used to right-align texts.
++ *
++ * @param str NUL-terminated printable ASCII string
++ * @return width in screen pixels
++ */
++f32 Message_GetAudioOcarinaStringWidth(const char* str) {
++    f32 width = 0.0f;
++
++    for (; *str != '\0'; str++) {
++        width += sFontWidths[*str - ' '] * AOC_TEXT_SCALE;
++    }
++    return width;
++}
++
++/**
++ * Appends to a display list the commands that draw a string with the game font and a black drop shadow.
++ *
++ * N64 graphics are not drawn immediately: the CPU writes a list of commands (a display list, `Gfx`) that the RSP/RDP
++ * graphics chips execute later. `*p` points to the next free slot of the list; every gDP.../gSP... macro writes one
++ * command there and advances the pointer, and the updated pointer is returned through `p`.
++ *
++ * For each character: the glyph texture is loaded into the RDP's texture memory (gDPLoadTextureBlock_4b), then
++ * gSPTextureRectangle draws it as a screen rectangle, first in black one pixel down-right (the shadow) and then in
++ * the requested color. The color comes from the "primitive color" and the combiner (gDPSetCombineLERP) multiplies it
++ * by the glyph's intensity. Rectangle coordinates are in 10.2 fixed point, hence the `<< 2`; the texture step
++ * `charScale` (1024 = 1 texel per pixel) shrinks the 16x16 glyph to AOC_TEXT_SCALE. Spaces only advance the cursor.
++ *
++ * The caller must have set up a 2D render mode first (Gfx_SetupDL_39Ptr).
++ *
++ * @param p   in/out: display list write pointer
++ * @param str NUL-terminated printable ASCII string
++ * @param x   left edge in screen pixels
++ * @param y   top edge in screen pixels
++ * @param r,g,b,a text color and opacity
++ */
++void Message_DrawAudioOcarinaString(Gfx** p, const char* str, s16 x, s16 y, u8 r, u8 g, u8 b, u8 a) {
++    Gfx* gfx = *p;
++    s16 charSize = AOC_TEXT_SCALE * FONT_CHAR_TEX_WIDTH;
++    s16 charScale = 1024.0f / AOC_TEXT_SCALE;
++    f32 posX = x;
++    void* tex;
++    s16 drawX;
++
++    gDPPipeSync(gfx++);
++    gDPSetCombineLERP(gfx++, 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0, 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0);
++
++    for (; *str != '\0'; str++) {
++        if (*str != ' ') {
++            tex = Message_GetAudioOcarinaGlyph(*str);
++            if (tex != NULL) {
++                drawX = posX;
++                gDPPipeSync(gfx++);
++                gDPLoadTextureBlock_4b(gfx++, tex, G_IM_FMT_I, FONT_CHAR_TEX_WIDTH, FONT_CHAR_TEX_HEIGHT, 0,
++                                       G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK,
++                                       G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
++                // Drop shadow
++                gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, a);
++                gSPTextureRectangle(gfx++, (drawX + 1) << 2, (y + 1) << 2, (drawX + 1 + charSize) << 2,
++                                    (y + 1 + charSize) << 2, G_TX_RENDERTILE, 0, 0, charScale, charScale);
++                gDPPipeSync(gfx++);
++                gDPSetPrimColor(gfx++, 0, 0, r, g, b, a);
++                gSPTextureRectangle(gfx++, drawX << 2, y << 2, (drawX + charSize) << 2, (y + charSize) << 2,
++                                    G_TX_RENDERTILE, 0, 0, charScale, charScale);
++            }
++        }
++        posX += sFontWidths[*str - ' '] * AOC_TEXT_SCALE;
++    }
++
++    *p = gfx;
++}
++
++/**
++ * Copies the ocarina staff background texture (the red textbox with the five staff lines) from the ROM into the
++ * message system's textbox texture buffer.
++ *
++ * Song checks and song playback open a textbox that loads this texture, but free play shows no textbox, so the
++ * buffer may hold another texture (or nothing useful). Called when audio mode starts in free play, before
++ * Message_DrawAudioOcarinaStaff() uses it. The ocarina texture is entry AOC_MESSAGE_STATIC_OCARINA_INDEX of
++ * message_static.
++ *
++ * @param play current play state
++ */
++void Message_LoadAudioOcarinaStaff(PlayState* play) {
++    MessageContext* msgCtx = &play->msgCtx;
++
++    DMA_REQUEST_SYNC(msgCtx->textboxSegment,
++                     (uintptr_t)_message_staticSegmentRomStart +
++                         (AOC_MESSAGE_STATIC_OCARINA_INDEX * MESSAGE_STATIC_TEX_SIZE),
++                     MESSAGE_STATIC_TEX_SIZE, "../z_message_PAL.c", __LINE__);
++}
++
++/**
++ * Draws a staff with the notes accepted in audio mode, like the one vanilla shows when it checks a song.
++ *
++ * Only used in free play: there vanilla draws no staff, and without one the player would not see which notes the
++ * device heard. Other ocarina actions already have a staff textbox on which vanilla draws the injected notes.
++ *
++ * Draws, in order: the semi-transparent staff background (the texture loaded by Message_LoadAudioOcarinaStaff()),
++ * the treble clef, and one note icon per entry of the note history (AudioOcarinaInput_GetDisplay()), placed at the
++ * height of its note and colored like vanilla (A notes blue, C notes yellow). Each icon fades in: its alpha is raised
++ * every frame until fully opaque. Positions, colors and fade step reuse the vanilla values (R_OCARINA_BUTTONS_*...).
++ *
++ * @param play         current play state
++ * @param p            in/out: display list write pointer (see Message_DrawAudioOcarinaString())
++ * @param noteTextures note icon textures indexed by OcarinaButtonIndex (vanilla sOcarinaNoteTextures)
++ */
++void Message_DrawAudioOcarinaStaff(PlayState* play, Gfx** p, void** noteTextures) {
++    MessageContext* msgCtx = &play->msgCtx;
++    AudioOcarinaDisplay* display = AudioOcarinaInput_GetDisplay();
++    Gfx* gfx = *p;
++    u16 notePosX;
++    s32 i;
++    u8 buttonIndex;
++
++    // Staff background and treble clef, as in Message_DrawTextBox for TEXTBOX_TYPE_OCARINA
++    Gfx_SetupDL_39Ptr(&gfx);
++    gDPPipeSync(gfx++);
++    gDPSetPrimColor(gfx++, 0, 0, 255, 0, 0, AOC_STAFF_ALPHA);
++    gDPSetEnvColor(gfx++, 0, 0, 0, 255);
++    gDPLoadTextureBlock_4b(gfx++, msgCtx->textboxSegment, G_IM_FMT_IA, 128, 64, 0, G_TX_MIRROR, G_TX_MIRROR, 7, 0,
++                           G_TX_NOLOD, G_TX_NOLOD);
++    gSPTextureRectangle(gfx++, AOC_STAFF_XPOS << 2, AOC_STAFF_YPOS << 2, (AOC_STAFF_XPOS + AOC_STAFF_WIDTH) << 2,
++                        (AOC_STAFF_YPOS + AOC_STAFF_HEIGHT) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++
++    gDPPipeSync(gfx++);
++    gDPSetCombineLERP(gfx++, 1, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0, 1, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0);
++    gDPSetPrimColor(gfx++, 0, 0, 255, 100, 0, 255);
++    gDPLoadTextureBlock_4b(gfx++, gOcarinaTrebleClefTex, G_IM_FMT_I, 16, 32, 0, G_TX_MIRROR, G_TX_MIRROR, G_TX_NOMASK,
++                           G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
++    gSPTextureRectangle(gfx++, R_TEXTBOX_CLEF_XPOS << 2, R_TEXTBOX_CLEF_YPOS << 2, (R_TEXTBOX_CLEF_XPOS + 16) << 2,
++                        (R_TEXTBOX_CLEF_YPOS + 32) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++
++    // Accepted notes, same look as the vanilla staff notes
++    Gfx_SetupDL_39Ptr(&gfx);
++    gDPSetCombineLERP(gfx++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0, PRIMITIVE,
++                      ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
++
++    for (notePosX = R_OCARINA_BUTTONS_XPOS, i = 0; i < display->count; i++) {
++        buttonIndex = display->buttonIndex[i];
++        if (buttonIndex > OCARINA_BTN_C_UP) {
++            continue;
++        }
++
++        if (display->alpha[i] != 255) {
++            display->alpha[i] += R_OCARINA_BUTTONS_APPEAR_ALPHA_STEP;
++            if (display->alpha[i] >= 255) {
++                display->alpha[i] = 255;
++            }
++        }
++
++        gDPPipeSync(gfx++);
++        if (buttonIndex == OCARINA_BTN_A) {
++            gDPSetPrimColor(gfx++, 0, 0, sOcarinaButtonAPrimR, sOcarinaButtonAPrimG, sOcarinaButtonAPrimB,
++                            display->alpha[i]);
++            gDPSetEnvColor(gfx++, sOcarinaButtonAEnvR, sOcarinaButtonAEnvG, sOcarinaButtonAEnvB, 0);
++        } else {
++            gDPSetPrimColor(gfx++, 0, 0, sOcarinaButtonCPrimR, sOcarinaButtonCPrimG, sOcarinaButtonCPrimB,
++                            display->alpha[i]);
++            gDPSetEnvColor(gfx++, sOcarinaButtonCEnvR, sOcarinaButtonCEnvG, sOcarinaButtonCEnvB, 0);
++        }
++
++        gDPLoadTextureBlock(gfx++, noteTextures[buttonIndex], G_IM_FMT_IA, G_IM_SIZ_8b, 16, 16, 0,
++                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
++                            G_TX_NOLOD);
++        gSPTextureRectangle(gfx++, notePosX << 2, R_OCARINA_BUTTONS_YPOS(buttonIndex) << 2, (notePosX + 16) << 2,
++                            (R_OCARINA_BUTTONS_YPOS(buttonIndex) + 16) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
++        notePosX += R_OCARINA_BUTTONS_XPOS_OFFSET;
++    }
++
++    *p = gfx;
++}
++
++typedef enum AudioOcarinaContext {
++    /* 0 */ AOC_CONTEXT_NONE,  // audio mode is not available and ends
++    /* 1 */ AOC_CONTEXT_KEEP,  // transitional ocarina mode: audio mode survives, notes are ignored
++    /* 2 */ AOC_CONTEXT_INPUT  // the player can play notes: audio mode can be used
++} AudioOcarinaContext;
++
++/**
++ * Classifies the current state of the message system for Audio Ocarina.
++ *
++ * In OoT the ocarina is driven by the message system: playing the ocarina, checking a song, the Skull Kid memory
++ * game or the frogs are all "messages" whose progress is stored in msgCtx->msgMode. This function sorts those modes:
++ *  - AOC_CONTEXT_INPUT: the player can play notes right now; audio mode can be entered and notes are accepted.
++ *  - AOC_CONTEXT_KEEP: the ocarina is still open but in a transition (start/fail animations, Skull Kid's or the frogs'
++ *    turn, retrying a taught song...); audio mode stays active but notes are ignored.
++ *  - AOC_CONTEXT_NONE: anything else; audio mode ends.
++ *
++ * Scarecrow recording is deliberately excluded: it records note lengths and R/Z semitones, which the device cannot
++ * provide.
++ *
++ * @param msgCtx message context of the current play state
++ * @return the context for this frame
++ */
++AudioOcarinaContext Message_GetAudioOcarinaContext(MessageContext* msgCtx) {
++    if (msgCtx->msgLength == 0) {
++        return AOC_CONTEXT_NONE;
++    }
++
++    switch (msgCtx->msgMode) {
++        case MSGMODE_OCARINA_PLAYING:
++        case MSGMODE_SONG_PLAYBACK:
++        case MSGMODE_MEMORY_GAME_PLAYER_PLAYING:
++        case MSGMODE_FROGS_PLAYING:
++            return AOC_CONTEXT_INPUT;
++
++        case MSGMODE_OCARINA_STARTING:
++        case MSGMODE_OCARINA_FAIL:
++        case MSGMODE_OCARINA_NOTES_DROP:
++        case MSGMODE_SONG_PLAYBACK_STARTING:
++        case MSGMODE_SONG_PLAYBACK_FAIL:
++        case MSGMODE_SONG_PLAYBACK_NOTES_DROP:
++        case MSGMODE_OCARINA_AWAIT_INPUT:
++        case MSGMODE_MEMORY_GAME_START:
++        case MSGMODE_MEMORY_GAME_LEFT_SKULLKID_PLAYING:
++        case MSGMODE_MEMORY_GAME_LEFT_SKULLKID_WAIT:
++        case MSGMODE_MEMORY_GAME_RIGHT_SKULLKID_PLAYING:
++        case MSGMODE_MEMORY_GAME_RIGHT_SKULLKID_WAIT:
++        case MSGMODE_MEMORY_GAME_ROUND_SUCCESS:
++        case MSGMODE_MEMORY_GAME_START_NEXT_ROUND:
++        case MSGMODE_FROGS_START:
++        case MSGMODE_FROGS_WAITING:
++            return AOC_CONTEXT_KEEP;
++
++        case MSGMODE_TEXT_NEXT_MSG:
++        case MSGMODE_TEXT_CONTINUING:
++        case MSGMODE_TEXT_DISPLAYING:
++            // Restarting an ocarina prompt (e.g. retrying a taught song) reopens its textbox for a few frames.
++            // Textboxes not opened by the ocarina have ocarinaAction 0xFFFF.
++            return (msgCtx->ocarinaAction != 0xFFFF) ? AOC_CONTEXT_KEEP : AOC_CONTEXT_NONE;
++
++        default:
++            return AOC_CONTEXT_NONE;
++    }
++}
++
++#if AUDIO_OCARINA_TEST
++// Test-build hooks, written from the debugger (emucap write_memory) to reach ocarina situations quickly.
++// gAocTestEntrance: entrance index + 1 to warp to. gAocTestOcarinaAction: OcarinaSongActionId + 1 to start.
++volatile u16 gAocTestEntrance = 0;
++volatile u16 gAocTestOcarinaAction = 0;
++// gAocTestPlayerPos: set .enable to 1 to move Link to (x, y, z)
++typedef struct AudioOcarinaTestPos {
++    /* 0x00 */ u32 enable;
++    /* 0x04 */ f32 x;
++    /* 0x08 */ f32 y;
++    /* 0x0C */ f32 z;
++} AudioOcarinaTestPos;
++volatile AudioOcarinaTestPos gAocTestPlayerPos = { 0, 0.0f, 0.0f, 0.0f };
++// gAocTestAutoAdvance: 1 = do what the Skull Kid / frog actors do to advance their ocarina games
++volatile u8 gAocTestAutoAdvance = 0;
++// Read-only mirrors of the message state for the debugger
++volatile u8 gAocTestMsgMode = 0;
++volatile u8 gAocTestLastButton = 0;
++volatile u8 gAocTestOcarinaMode = 0;
++volatile u8 gAocTestLastPlayedSong = 0;
++
++/**
++ * Test-build only (AUDIO_OCARINA_TEST=1). Applies the requests a debugger wrote into the gAocTest* variables and
++ * mirrors some message state for it to read, so automated tests can reach any ocarina situation without playing.
++ *
++ *  - gAocTestAutoAdvance: plays the part of the Skull Kid / frog actors, which are not present in the test setup, so
++ *    the memory game and the frog game advance to the player's turn.
++ *  - gAocTestPlayerPos: teleports Link once to the given position.
++ *  - gAocTestEntrance: triggers a warp to that entrance (value - 1) with a fade to black.
++ *  - gAocTestOcarinaAction: opens the ocarina with that action (value - 1), once no message is shown.
++ *
++ * Each request is cleared once applied. Called at the start of Message_UpdateAudioOcarina().
++ *
++ * @param play current play state
++ */
++void Message_UpdateAudioOcarinaTestHooks(PlayState* play) {
++    MessageContext* msgCtx = &play->msgCtx;
++
++    if (gAocTestAutoAdvance) {
++        if ((msgCtx->msgMode == MSGMODE_MEMORY_GAME_LEFT_SKULLKID_WAIT) ||
++            (msgCtx->msgMode == MSGMODE_MEMORY_GAME_RIGHT_SKULLKID_WAIT)) {
++            Message_UpdateOcarinaMemoryGame(play);
++        } else if ((msgCtx->msgMode == MSGMODE_MEMORY_GAME_START_NEXT_ROUND) &&
++                   !Audio_IsSfxPlaying(NA_SE_SY_METRONOME)) {
++            AudioOcarina_SetInstrument(OCARINA_INSTRUMENT_FLUTE);
++            AudioOcarina_SetPlaybackSong(OCARINA_SONG_MEMORY_GAME + 1, 1);
++            msgCtx->msgMode = MSGMODE_MEMORY_GAME_LEFT_SKULLKID_PLAYING;
++            msgCtx->stateTimer = 2;
++        } else if (msgCtx->msgMode == MSGMODE_FROGS_WAITING) {
++            msgCtx->msgMode = MSGMODE_FROGS_START;
++        }
++    }
++    gAocTestMsgMode = msgCtx->msgMode;
++    gAocTestLastButton = msgCtx->lastOcarinaButtonIndex;
++    gAocTestOcarinaMode = msgCtx->ocarinaMode;
++    gAocTestLastPlayedSong = msgCtx->lastPlayedSong;
++
++    if (gAocTestPlayerPos.enable != 0) {
++        Player* player = GET_PLAYER(play);
++
++        player->actor.world.pos.x = player->actor.home.pos.x = gAocTestPlayerPos.x;
++        player->actor.world.pos.y = player->actor.home.pos.y = gAocTestPlayerPos.y;
++        player->actor.world.pos.z = player->actor.home.pos.z = gAocTestPlayerPos.z;
++        gAocTestPlayerPos.enable = 0;
++    }
++    if (gAocTestEntrance != 0) {
++        play->nextEntranceIndex = gAocTestEntrance - 1;
++        play->transitionTrigger = TRANS_TRIGGER_START;
++        play->transitionType = TRANS_TYPE_FADE_BLACK;
++        gAocTestEntrance = 0;
++    }
++    if ((gAocTestOcarinaAction != 0) && (play->msgCtx.msgLength == 0)) {
++        Message_StartOcarina(play, gAocTestOcarinaAction - 1);
++        gAocTestOcarinaAction = 0;
++    }
++}
++#endif
++
++/**
++ * Per-frame Audio Ocarina update on the game side, called from Message_Update() before vanilla updates the message.
++ *
++ * Classifies the message state (Message_GetAudioOcarinaContext()), tells audio_ocarina_input.c whether audio mode may
++ * stay active and whether notes are accepted, and, when the player can play, runs the audio mode state machine with
++ * the controller's newly pressed buttons.
++ *
++ * When audio mode is entered or left, the vanilla ocarina is restarted by going back to its "starting" message mode
++ * (MSGMODE_OCARINA_STARTING or MSGMODE_SONG_PLAYBACK_STARTING). This clears the notes vanilla had already recorded,
++ * so a song cannot be completed with a mix of button and microphone notes. When audio mode starts in free play, the
++ * staff texture is loaded as well so Message_DrawAudioOcarinaStaff() can use it.
++ *
++ * @param play current play state
++ */
++void Message_UpdateAudioOcarina(PlayState* play) {
++    MessageContext* msgCtx = &play->msgCtx;
++    AudioOcarinaContext context;
++
++#if AUDIO_OCARINA_TEST
++    Message_UpdateAudioOcarinaTestHooks(play);
++#endif
++
++    context = Message_GetAudioOcarinaContext(msgCtx);
++
++    AudioOcarinaInput_CheckMessageState(context != AOC_CONTEXT_NONE);
++    AudioOcarinaInput_SetInputOpen(context == AOC_CONTEXT_INPUT);
++
++    if (context != AOC_CONTEXT_INPUT) {
++        return;
++    }
++
++    if (AudioOcarinaInput_UpdatePlaying(play->state.input[0].press.button) == AOC_ACTION_RESTART_OCARINA) {
++        // Entering or leaving audio mode: start the song check over so no stale notes remain in it
++        if (msgCtx->msgMode == MSGMODE_OCARINA_PLAYING) {
++            if (AudioOcarinaInput_IsListening() && (msgCtx->ocarinaAction == OCARINA_ACTION_FREE_PLAY ||
++                                                    msgCtx->ocarinaAction == OCARINA_ACTION_CHECK_NOWARP)) {
++                Message_LoadAudioOcarinaStaff(play);
++            }
++            msgCtx->msgMode = MSGMODE_OCARINA_STARTING;
++        } else if (msgCtx->msgMode == MSGMODE_SONG_PLAYBACK) {
++            msgCtx->msgMode = MSGMODE_SONG_PLAYBACK_STARTING;
++        }
++        // The frogs and the memory game restart their check for every note / round by themselves
++    }
++}
++
++/**
++ * Draws the Audio Ocarina UI on top of the ocarina UI. Called at the end of Message_DrawMain().
++ *
++ * Only draws while the player can play notes. Shows, right-aligned above the note area:
++ *  - "D-Pad Up: Audio" while audio mode is off (how to enable it);
++ *  - "Audio device not found." in red for a moment after a failed probe or a disconnect;
++ *  - "Listening...  B: Cancel" while listening, plus "D-Pad: Octave <n>" if the device supports octave changes, and
++ *    in free play the staff with the accepted notes.
++ * Nothing is drawn during the few frames of probing.
++ *
++ * @param play         current play state
++ * @param p            in/out: display list write pointer (see Message_DrawAudioOcarinaString())
++ * @param noteTextures note icon textures indexed by OcarinaButtonIndex, passed to Message_DrawAudioOcarinaStaff()
++ */
++void Message_DrawAudioOcarina(PlayState* play, Gfx** p, void** noteTextures) {
++    MessageContext* msgCtx = &play->msgCtx;
++    Gfx* gfx = *p;
++    AudioOcarinaMode mode = AudioOcarinaInput_GetMode();
++    const char* text;
++    u8 r = 255;
++    u8 g = 255;
++    u8 b = 255;
++
++    if (Message_GetAudioOcarinaContext(msgCtx) != AOC_CONTEXT_INPUT) {
++        return;
++    }
++
++    if ((mode == AOC_MODE_LISTENING) && (msgCtx->msgMode == MSGMODE_OCARINA_PLAYING) &&
++        (msgCtx->ocarinaAction == OCARINA_ACTION_FREE_PLAY ||
++                                         msgCtx->ocarinaAction == OCARINA_ACTION_CHECK_NOWARP)) {
++        Message_DrawAudioOcarinaStaff(play, &gfx, noteTextures);
++    }
++
++    if (mode == AOC_MODE_LISTENING) {
++        text = sAudioOcarinaListeningText;
++    } else if (AudioOcarinaInput_GetErrorTimer() > 0) {
++        text = sAudioOcarinaErrorText;
++        g = 100;
++        b = 100;
++    } else if (mode == AOC_MODE_DISABLED) {
++        text = sAudioOcarinaPromptText;
++    } else {
++        // Probing, only lasts a few frames
++        *p = gfx;
++        return;
++    }
++
++    Gfx_SetupDL_39Ptr(&gfx);
++    Message_DrawAudioOcarinaString(&gfx, text, AOC_TEXT_RIGHT_XPOS - (s16)Message_GetAudioOcarinaStringWidth(text),
++                                   AOC_TEXT_YPOS, r, g, b, 255);
++
++    if ((mode == AOC_MODE_LISTENING) && AudioOcarinaInput_HasOctaveControl()) {
++        // "D-Pad: Octave +1" / "D-Pad: Octave 0" / "D-Pad: Octave -2"
++        char octaveText[sizeof(sAudioOcarinaOctaveText) + 3];
++        s8 octave = AudioOcarinaInput_GetOctave();
++        s32 len = sizeof(sAudioOcarinaOctaveText) - 1;
++        s32 i;
++
++        for (i = 0; i < len; i++) {
++            octaveText[i] = sAudioOcarinaOctaveText[i];
++        }
++        if (octave > 0) {
++            octaveText[len++] = '+';
++        } else if (octave < 0) {
++            octaveText[len++] = '-';
++            octave = -octave;
++        }
++        octaveText[len++] = '0' + octave;
++        octaveText[len] = '\0';
++
++        Message_DrawAudioOcarinaString(&gfx, octaveText,
++                                       AOC_TEXT_RIGHT_XPOS - (s16)Message_GetAudioOcarinaStringWidth(octaveText),
++                                       AOC_OCTAVE_TEXT_YPOS, 255, 255, 255, 255);
++    }
++
++    *p = gfx;
++}
++#endif
++
+ /**
+  * Draws the textbox in full and updates ocarina state
+  */
+@@ -3256,7 +3758,12 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
+                     SFX_PLAY_CENTERED(NA_SE_SY_OCARINA_ERROR);
+                     msgCtx->stateTimer = 10;
+                     msgCtx->msgMode = MSGMODE_OCARINA_FAIL;
+-                } else if (CHECK_BTN_ALL(input->press.button, BTN_B)) {
++                } else if (CHECK_BTN_ALL(input->press.button, BTN_B)
++#if AUDIO_OCARINA
++                           // While listening, B cancels audio mode instead of closing the ocarina
++                           && !AudioOcarinaInput_IsListening()
++#endif
++                ) {
+                     AudioOcarina_SetInstrument(OCARINA_INSTRUMENT_OFF);
+                     play->msgCtx.ocarinaMode = OCARINA_MODE_04;
+                     Message_CloseTextbox(play);
+@@ -4003,6 +4510,10 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
+                 }
+             }
+         }
++
++#if AUDIO_OCARINA
++        Message_DrawAudioOcarina(play, &gfx, sOcarinaNoteTextures);
++#endif
+     }
+     *p = gfx;
+ }
+@@ -4167,6 +4678,10 @@ void Message_Update(PlayState* play) {
+     }
+ #endif
+ 
++#if AUDIO_OCARINA
++    Message_UpdateAudioOcarina(play);
++#endif
++
+     if (msgCtx->msgLength != 0) {
+ 
+         switch (msgCtx->msgMode) {
+diff --git a/src/overlays/actors/ovl_En_Fr/z_en_fr.c b/src/overlays/actors/ovl_En_Fr/z_en_fr.c
+index 7de1c12a2..5faf31249 100644
+--- a/src/overlays/actors/ovl_En_Fr/z_en_fr.c
++++ b/src/overlays/actors/ovl_En_Fr/z_en_fr.c
+@@ -28,6 +28,9 @@
+ 
+ #include "assets/objects/gameplay_field_keep/gameplay_field_keep.h"
+ #include "assets/objects/object_fr/object_fr.h"
++#if AUDIO_OCARINA
++#include "audio_ocarina_input.h"
++#endif
+ 
+ #define FLAGS                                                                                  \
+     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
+@@ -902,7 +905,12 @@ void EnFr_ContinueFrogSong(EnFr* this, PlayState* play) {
+                     counter++;
+                 }
+             }
+-            if (counter == 0 && CHECK_BTN_ALL(play->state.input[0].press.button, BTN_B)) {
++            if (counter == 0 && CHECK_BTN_ALL(play->state.input[0].press.button, BTN_B)
++#if AUDIO_OCARINA
++                // While listening to the audio device, B cancels audio mode instead of quitting the frog game
++                && !AudioOcarinaInput_IsListening()
++#endif
++            ) {
+                 EnFr_OcarinaMistake(this, play);
+                 return;
+             }

@@ -1,0 +1,26 @@
+# The decomp checkout is not part of this repository: tools/setup-oot.sh creates it from rom/
+/oot/
+
+# Build output
+build/
+build-*/
+dist/
+docs/doxygen/out/
+docs/doxygen/staging/
+compile_commands.json
+
+# ROMs, patches and saves (ROMs cannot be distributed; patches are release assets)
+baseroms/
+*.z64
+*.n64
+!Doxyfile.n64
+*.v64
+*.bps
+*.ips
+*.sra
+*.sav
+*.eep
+*.fla
+*.mpk
+*.st
+*.st[0-9]

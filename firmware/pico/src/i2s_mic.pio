@@ -1,0 +1,60 @@
+;
+; I2S master receiver for the INMP441 (Audio Ocarina firmware).
+;
+; Side-set bit 0 = BCLK (SCK), bit 1 = WS (LRCLK), on consecutive pins. Two PIO cycles per BCLK: low half
+; (the mic shifts out on the falling edge), high half (sampled here). 64 BCLKs per frame, WS low = left slot.
+; Standard I2S: the slot's MSB comes one BCLK after the WS change, so the program starts at BCLK 1 of the frame
+; and pushes exactly one 32-bit slot per word: even words = left (the INMP441 with L/R = GND), odd = right.
+; The 24-bit sample is in the top bits of the left word.
+;
+; Autopush 32, shift left. PIO clock = 128 * fs.
+;
+.program i2s_mic
+.side_set 2
+
+.wrap_target
+    set x, 29       side 0b00   ; BCLK 1 low, WS low (left)
+left_bits:
+    in pins, 1      side 0b01   ; sample BCLK 1..30
+    jmp x-- left_bits    side 0b00
+    in pins, 1      side 0b01   ; BCLK 31
+    set x, 29       side 0b10   ; BCLK 32 low, WS high (right)
+right_bits:
+    in pins, 1      side 0b11   ; BCLK 32 (left LSB) .. 61
+    jmp x-- right_bits   side 0b10
+    in pins, 1      side 0b11   ; BCLK 62
+    nop             side 0b10
+    in pins, 1      side 0b11   ; BCLK 63
+    nop             side 0b00   ; BCLK 0 low, WS low
+    in pins, 1      side 0b01   ; BCLK 0 (right LSB)
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+/**
+ * Starts the I2S clocks and capture. `sckPin` + 1 must be the WS pin.
+ * @return the real sample rate given the clock divider
+ */
+static inline float i2s_mic_program_init(PIO pio, uint sm, uint offset, uint sdPin, uint sckPin, float sampleRate) {
+    pio_sm_config c = i2s_mic_program_get_default_config(offset);
+    float div = (float)clock_get_hz(clk_sys) / (sampleRate * 128.0f);
+    uint32_t div256 = (uint32_t)(div * 256.0f + 0.5f); /* the divider has 8 fraction bits */
+
+    sm_config_set_in_pins(&c, sdPin);
+    sm_config_set_sideset_pins(&c, sckPin);
+    sm_config_set_in_shift(&c, false, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    sm_config_set_clkdiv_int_frac8(&c, div256 >> 8, div256 & 0xFF);
+
+    pio_gpio_init(pio, sckPin);
+    pio_gpio_init(pio, sckPin + 1);
+    pio_gpio_init(pio, sdPin);
+    gpio_pull_down(sdPin); /* tri-stated during the right slot; also makes a missing mic read as 0 */
+    pio_sm_set_consecutive_pindirs(pio, sm, sckPin, 2, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, sdPin, 1, false);
+
+    pio_sm_init(pio, sm, offset, &c);
+    return (float)clock_get_hz(clk_sys) * 256.0f / ((float)div256 * 128.0f);
+}
+%}

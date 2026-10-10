@@ -1,0 +1,12 @@
+@INCLUDE               = Doxyfile.common
+PROJECT_NAME           = "mupen64plus-input-ocarina"
+PROJECT_BRIEF          = "Mupen64Plus proxy input plugin emulating the Audio Ocarina Port 4 device"
+OUTPUT_DIRECTORY       = out/plugin
+STRIP_FROM_PATH        = ../../emulator/mupen64plus-input-ocarina ../..
+INPUT                  = pages/plugin_main.md \
+                         ../../emulator/mupen64plus-input-ocarina/src \
+                         ../../emulator/mupen64plus-input-ocarina/tools \
+                         staging/plugin/protocol.md \
+                         ../../tests
+FILE_PATTERNS          = *.c *.h *.md
+USE_MDFILE_AS_MAINPAGE = pages/plugin_main.md

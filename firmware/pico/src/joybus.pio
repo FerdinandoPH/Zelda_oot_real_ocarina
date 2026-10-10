@@ -1,0 +1,94 @@
+;
+; Joybus device side (N64 controller port) for the Audio Ocarina firmware.
+;
+; The line is open drain: the output latch stays 0 and the program only switches the pin direction
+; (pindirs 1 = pull low, pindirs 0 = release, the console's pull-up takes it high).
+; Bit cell 4 us: '0' = 3 us low + 1 us high, '1' = 1 us low + 3 us high. The console ends a command with
+; a 1 us low stop bit; the device ends its reply with a 2 us low stop bit.
+;
+; Clock: 16 MHz (16 cycles per microsecond, JOYBUS_PIO_HZ in config.h).
+; in/set/jmp pin: the DATA pin. RX: autopush 8, shift left. TX: no autopull, pull threshold 32, shift left.
+;
+; RX pushes each received byte. When the line stays high for ~6 us the frame is over: the program raises
+; IRQ (0 rel) and starts over, dropping the bit that the console's stop bit left in the ISR.
+;
+; TX is entered by the CPU with a forced "jmp transmit", after it has written to the TX FIFO: the number of bits
+; minus 1, then the reply bytes packed MSB first in 32-bit words. It first waits until the line has been high
+; for 3.5 us: no data bit is high for longer than 3 us, so this can only happen after the console's stop bit.
+;
+.program joybus
+
+.define SAMPLE_DELAY 31     ; + ~2 cycles of latency: sample ~2.1 us after the falling edge
+.define FRAME_IDLE_LOOPS 31 ; 3-cycle loop: ~5.8 us high = end of frame
+.define REPLY_IDLE_LOOPS 27 ; 2-cycle loop: 3.5 us high before replying
+
+public receive:
+    set pindirs, 0
+rx_frame:
+    mov isr, null
+rx_bit:
+    wait 0 pin 0
+    nop [SAMPLE_DELAY]
+    in pins, 1
+    wait 1 pin 0
+    set x, FRAME_IDLE_LOOPS
+rx_idle:
+    jmp pin, rx_high
+    jmp rx_bit              ; next falling edge
+rx_high:
+    jmp x-- rx_idle [1]
+    irq nowait 0 rel        ; end of frame
+    jmp rx_frame
+
+public transmit:
+    pull block              ; bits - 1
+    out y, 32
+tx_idle_restart:
+    set x, REPLY_IDLE_LOOPS
+tx_idle:
+    jmp pin, tx_idle_high
+    jmp tx_idle_restart
+tx_idle_high:
+    jmp x-- tx_idle
+
+; One bit = 64 cycles, from "set pindirs, 1" to the next one
+tx_bit:
+    pull ifempty block
+    out x, 1
+    set pindirs, 1 [15]     ; low for 1 us
+    jmp !x tx_zero
+    set pindirs, 0 [31]     ; '1': high for the remaining 3 us
+    jmp y-- tx_bit [12]
+    jmp tx_stop
+tx_zero:
+    nop [31]                ; '0': low for 2 more us
+    set pindirs, 0 [11]     ; high for 1 us
+    jmp y-- tx_bit
+tx_stop:
+    set pindirs, 1 [31]     ; stop bit: 2 us low
+    set pindirs, 0
+    jmp rx_frame
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void joybus_program_init(PIO pio, uint sm, uint offset, uint pin, float pioHz) {
+    pio_sm_config c = joybus_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin);
+    sm_config_set_set_pins(&c, pin, 1);
+    sm_config_set_jmp_pin(&c, pin);
+    sm_config_set_in_shift(&c, false, true, 8);   /* MSB first, autopush every byte */
+    sm_config_set_out_shift(&c, false, false, 32); /* MSB first, manual pull */
+    sm_config_set_clkdiv(&c, (float)clock_get_hz(clk_sys) / pioHz);
+
+    /* Output latch 0, direction input: the line is only ever pulled low */
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << pin);
+    pio_sm_set_pindirs_with_mask(pio, sm, 0, 1u << pin);
+    pio_gpio_init(pio, pin);
+    gpio_pull_up(pin); /* keeps the line defined when the console is off; the console's pull-up is stronger */
+
+    pio_sm_init(pio, sm, offset + joybus_offset_receive, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

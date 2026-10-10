@@ -1,0 +1,13 @@
+@INCLUDE               = Doxyfile.common
+PROJECT_NAME           = "Zelda OoT Real Ocarina: ROM hack"
+PROJECT_BRIEF          = "Code added to / modified in zeldaret/oot (branch audio-ocarina, AUDIO_OCARINA=1)"
+OUTPUT_DIRECTORY       = out/n64
+# Filled by build_docs.sh: new files + the Audio Ocarina part of z_message.c + generated pages
+INPUT                  = staging/n64
+STRIP_FROM_PATH        = staging/n64
+FILE_PATTERNS          = *.c *.h *.md
+RECURSIVE              = YES
+USE_MDFILE_AS_MAINPAGE = staging/n64/pages/n64_main.md
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+PREDEFINED             = AUDIO_OCARINA=1 AUDIO_OCARINA_TEST=1
