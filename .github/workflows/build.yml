@@ -105,8 +105,8 @@ jobs:
           | File | What it is |
           |------|------------|
           | `zelda-oot-real-ocarina-${{ github.ref_name }}.bps` | ROM patch. Apply it to **The Legend of Zelda: Ocarina of Time (USA) 1.0** in `.z64` format (SHA-1 `ad69c91157f6705e8ab06c79fe08aad47bb57ba7`) with [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/) or Floating IPS |
-          | `zelda-oot-real-ocarina-mupen64plus-linux-x86_64.tar.gz` | Mupen64Plus plugin for Linux: plays the device with your PC microphone. Run `install.sh` |
-          | `zelda-oot-real-ocarina-mupen64plus-windows-x64.zip` | Mupen64Plus plugin for Windows: copy the `.dll` next to `mupen64plus-input-sdl.dll` |
+          | `zelda-oot-real-ocarina-mupen64plus-linux-x86_64.tar.gz` | Mupen64Plus plugin for Linux: emulates the ORU with your PC microphone. Run `install.sh` |
+          | `zelda-oot-real-ocarina-mupen64plus-windows-x64.zip` | Mupen64Plus plugin for Windows: emulates the ORU with your PC microphone. Copy the `.dll` next to `mupen64plus-input-sdl.dll` |
           | `oru-firmware.zip` | Firmware for the ORU (Ocarina Recognition Unit), the Port 4 device for a real N64 (Pico, Pico W, Pico 2, Pico 2 W) |
 
           See the [README](https://github.com/${{ github.repository }}#readme) for details. No ROM is included.
