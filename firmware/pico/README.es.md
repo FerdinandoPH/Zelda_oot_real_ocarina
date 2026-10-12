@@ -12,6 +12,8 @@ v1.
 
 ## Cableado
 
+![El ORU en una protoboard: una Raspberry Pi Pico, un micrófono INMP441 y un cable de mando de N64 cortado y soldado a cables de puente](../../docs/img/oru.jpg)
+
 | Desde              | Hasta (Pico)                                                    | Pin de la Pico   |
 | ------------------ | --------------------------------------------------------------- | ---------------- |
 | INMP441 VDD        | 3V3(OUT)                                                        | 36               |
@@ -21,7 +23,7 @@ v1.
 | INMP441 WS / LRCLK | GP19                                                            | 25               |
 | INMP441 SD         | GP20                                                            | 26               |
 | DATA del puerto 4 de la N64 | GP22                                                   | 29               |
-| 3,3 V del puerto 4 de la N64 | VSYS, **a través de un diodo Schottky** (ánodo en el lado de la N64) | 39 |
+| 3,3 V del puerto 4 de la N64 | VSYS, a través de un diodo Schottky (ánodo en el lado de la N64). **El diodo es opcional**: ver las notas | 39 |
 | GND del puerto 4 de la N64 | GND                                                     | 38               |
 
 El conector de mando de la N64 tiene tres pines: GND, DATA (el del medio) y 3,3 V. Antes de conectar nada,
@@ -31,9 +33,12 @@ Notas:
 
 - **DATA es de drenador abierto.** La consola tiene su propio pull-up a 3,3 V. El firmware solo pone la línea a
   nivel bajo o la suelta. Nunca conectes DATA a una fuente de 5 V.
-- **El diodo en VSYS** permite conectar el USB, para la consola serie, mientras la Pico está en la consola. La Pico
-  ya tiene un diodo de VBUS a VSYS, así que las dos alimentaciones no pueden pelearse. Sirve un BAT54 o un 1N5817.
-  El regulador de la Pico funciona bien con los ~3,0 V que quedan tras el diodo.
+- **El diodo en VSYS es opcional.** Permite conectar el USB, para la consola serie, mientras la Pico está en la
+  consola. La Pico ya tiene un diodo de VBUS a VSYS, así que las dos alimentaciones no pueden pelearse. Sirve un
+  BAT54 o un 1N5817. El regulador de la Pico funciona bien con los ~3,0 V que quedan tras el diodo.
+- **Sin el diodo**, conecta los 3,3 V de la consola directamente a VSYS y **no conectes nunca el USB mientras el ORU
+  está en la consola**. El USB pone ~4,7 V en VSYS y, sin el diodo, esa tensión vuelve a la línea de 3,3 V de la
+  consola. Para usar la consola serie, desconecta antes el cable de 3,3 V (deja GND y DATA conectados).
 - El consumo es de unos 25 mA para una Pico o Pico 2 con el micrófono. En las Pico W, el chip inalámbrico solo
   controla el LED, y se apaga junto con el LED unos segundos después de arrancar (ver "LED"). Es bastante menos
   de lo que el puerto le da a un Rumble Pak.

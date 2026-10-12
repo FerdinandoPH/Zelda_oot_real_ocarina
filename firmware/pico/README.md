@@ -11,6 +11,8 @@ of Time notes is playing and reports it to the N64 on controller port 4 using `p
 
 ## Wiring
 
+![The ORU on a breadboard: a Raspberry Pi Pico, an INMP441 microphone and a cut N64 controller cable soldered to jumper wires](../../docs/img/oru.jpg)
+
 | From               | To (Pico)                                                       | Pico pin         |
 | ------------------ | --------------------------------------------------------------- | ---------------- |
 | INMP441 VDD        | 3V3(OUT)                                                        | 36               |
@@ -20,7 +22,7 @@ of Time notes is playing and reports it to the N64 on controller port 4 using `p
 | INMP441 WS / LRCLK | GP19                                                            | 25               |
 | INMP441 SD         | GP20                                                            | 26               |
 | N64 port 4 DATA    | GP22                                                            | 29               |
-| N64 port 4 3.3 V   | VSYS, **through a Schottky diode** (anode on the N64 side) | 39               |
+| N64 port 4 3.3 V   | VSYS, through a Schottky diode (anode on the N64 side). **The diode is optional**: see the notes | 39 |
 | N64 port 4 GND     | GND                                                             | 38               |
 
 The N64 controller plug has three pins: GND, DATA (the middle one) and 3.3 V. Before you connect anything,
@@ -30,9 +32,12 @@ Notes:
 
 - **DATA is open drain.** The console has its own pull-up to 3.3 V. The firmware only ever pulls the line low or
   releases it. Never connect DATA to a 5 V source.
-- **The diode on VSYS** lets you plug in USB, for the serial console, while the Pico sits on the console. The
-  Pico already has a diode from VBUS to VSYS, so the two supplies cannot fight. A BAT54 or 1N5817 works. The
-  Pico's regulator runs fine from the ~3.0 V that is left after the diode.
+- **The diode on VSYS is optional.** It lets you plug in USB, for the serial console, while the Pico sits on the
+  console. The Pico already has a diode from VBUS to VSYS, so the two supplies cannot fight. A BAT54 or 1N5817
+  works. The Pico's regulator runs fine from the ~3.0 V that is left after the diode.
+- **Without the diode**, wire the console's 3.3 V straight to VSYS, and **never plug in USB while the ORU is on
+  the console**. USB puts ~4.7 V on VSYS, and without the diode that voltage goes back into the console's 3.3 V
+  line. To use the serial console, disconnect the 3.3 V wire first (keep GND and DATA connected).
 - Current draw is about 25 mA for a Pico or Pico 2 with the mic. On Pico W boards the wireless chip only drives
   the LED, and it is powered down together with the LED a few seconds after boot (see "LED"). This is well within
   what a port gives a Rumble Pak.

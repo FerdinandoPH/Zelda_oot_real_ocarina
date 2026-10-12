@@ -32,12 +32,12 @@ Descarga los ficheros de la [última release](../../releases/latest).
 
 ### 1. Parchea tu ROM
 
-Necesitas *The Legend of Zelda: Ocarina of Time* **(USA) versión 1.0** en formato `.z64` (big-endian):
+Necesitas una copia legal de la ROM *The Legend of Zelda: Ocarina of Time* **(USA) versión 1.0** en formato `.z64` (big-endian):
 
-| | |
-|-|-|
+|       |                                              |
+| ----- | -------------------------------------------- |
 | SHA-1 | `ad69c91157f6705e8ab06c79fe08aad47bb57ba7` |
-| MD5 | `5bd1fe107bf8106b2ab6650abecd54d6` |
+| MD5   | `5bd1fe107bf8106b2ab6650abecd54d6`         |
 
 Las demás versiones (1.1, 1.2, PAL, GameCube) no sirven por ahora. Un `.n64` o `.v64` tiene el contenido correcto
 pero con otro orden de bytes: conviértelo antes a `.z64` (por ejemplo con Tool64).
@@ -56,8 +56,7 @@ El plugin funciona con Mupen64Plus 2.5 o posterior y con los frontends que usan 
 mupen64plus-qt). Envuelve al plugin habitual `mupen64plus-input-sdl`, así que los mandos 1-3 siguen funcionando
 como siempre. El plugin añade el dispositivo de audio en el puerto 4.
 
-**Linux (x86_64).** Instala antes Mupen64Plus, por ejemplo con `sudo apt install mupen64plus-ui-console
-mupen64plus-input-sdl mupen64plus-video-glide64mk2 mupen64plus-audio-sdl mupen64plus-rsp-hle`.
+**Linux (x86_64).** Instala antes Mupen64Plus, por ejemplo con `sudo apt install mupen64plus-ui-console mupen64plus-input-sdl mupen64plus-video-glide64mk2 mupen64plus-audio-sdl mupen64plus-rsp-hle`.
 
 Instalarlo consiste en copiar `mupen64plus-input-ocarina.so` en la carpeta de plugins de Mupen64Plus, junto a
 `mupen64plus-input-sdl.so`. Esa carpeta es del sistema (de ahí el `sudo`) y depende de la distribución:
@@ -93,22 +92,24 @@ En un frontend gráfico, elige `mupen64plus-input-ocarina` como plugin de entrad
 Sin micrófono también puedes probarlo con el teclado. Mantén una tecla para mantener una nota y suéltala para
 dejar silencio:
 
-| Tecla | Acción |
-|-------|--------|
-| R | Nota A (Re) |
-| T | C-Abajo (Fa) |
-| N | C-Derecha (La) |
-| U | C-Izquierda (Si) |
-| O | C-Arriba (Re agudo) |
-| H | Desenchufar / volver a enchufar el dispositivo del puerto 4 |
-| V | Micrófono sí / no |
+| Tecla | Acción                                                     |
+| ----- | ----------------------------------------------------------- |
+| R     | Nota A (Re)                                                 |
+| T     | C-Abajo (Fa)                                                |
+| N     | C-Derecha (La)                                              |
+| U     | C-Izquierda (Si)                                            |
+| O     | C-Arriba (Re agudo)                                         |
+| H     | Desenchufar / volver a enchufar el dispositivo del puerto 4 |
+| V     | Micrófono sí / no                                         |
 
 Por ejemplo, la Nana de Zelda es U O N U O N, con una pausa corta entre notas.
 
 ### 2b. En una N64 real (ORU)
 
+![El ORU en una protoboard: una Raspberry Pi Pico, un micrófono INMP441 y un cable de mando de N64 cortado y soldado a cables de puente](docs/img/oru.jpg)
+
 1. Monta el ORU: una Raspberry Pi Pico, Pico W, Pico 2 o Pico 2 W, un módulo de micrófono INMP441, un
-   diodo Schottky y un conector de mando de N64 (tendrás que cortarlo y soldar los cables a la Pico). El cableado
+   diodo Schottky opcional y un conector de mando de N64 (tendrás que cortarlo y soldar los cables a la Pico). El cableado
    está en [firmware/pico/README.es.md](firmware/pico/README.es.md#cableado).
 2. Descomprime `oru-firmware.zip`. Mantén pulsado **BOOTSEL**, conecta la Pico por USB y copia el
    `.uf2` de tu placa (`pico`, `pico_w`, `pico2` o `pico2_w`) en la unidad que aparece.
@@ -137,35 +138,35 @@ Las notas objetivo son Re5, Fa5, La5, Si5 y Re6, las mismas que toca el juego.
 
 Dónde funciona el modo audio:
 
-| Situación | Modo audio |
-|-----------|------------|
-| Tocar libremente desde un botón C (teletransportes, Saria, Tormentas, Sol, …) | Sí |
-| Avisos de "toca una canción aquí" (símbolos de la Trifuerza, bloques del Tiempo, Malon, canciones de las ranas, …) | Sí |
-| Repetir una canción que te están enseñando | Sí. Sigue activo tras los intentos fallidos |
-| Juego de memoria de Skull Kid (Bosque Perdido) | Sí, en tu turno. Lo que oye el dispositivo en el turno de Skull Kid se ignora |
-| Juego de notas de las ranas (tras tocarles las 6 canciones) | Sí. B cancela la escucha en lugar de salir del juego |
-| Grabar la canción del espantapájaros | No: graba la duración de las notas y los semitonos con R/Z, que el modo audio no produce |
+| Situación                                                                                                             | Modo audio                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Tocar libremente desde un botón C (teletransportes, Saria, Tormentas, Sol, …)                                        | Sí                                                                                       |
+| Avisos de "toca una canción aquí" (símbolos de la Trifuerza, bloques del Tiempo, Malon, canciones de las ranas, …) | Sí                                                                                       |
+| Repetir una canción que te están enseñando                                                                          | Sí. Sigue activo tras los intentos fallidos                                              |
+| Juego de memoria de Skull Kid (Bosque Perdido)                                                                         | Sí, en tu turno. Lo que oye el dispositivo en el turno de Skull Kid se ignora            |
+| Juego de notas de las ranas (tras tocarles las 6 canciones)                                                            | Sí. B cancela la escucha en lugar de salir del juego                                     |
+| Grabar la canción del espantapájaros                                                                                 | No: graba la duración de las notas y los semitonos con R/Z, que el modo audio no produce |
 
 ### Ajustar el micrófono
 
 Los ajustes del plugin están en la sección `[Input-Ocarina]` de `mupen64plus.cfg` (`~/.config/mupen64plus/` en
 Linux, `%APPDATA%\Mupen64Plus\` en Windows). La sección se crea la primera vez que se ejecuta el plugin.
 
-| Ajuste | Por defecto | Significado |
-|--------|-------------|-------------|
-| `Enabled` | true | Emular el dispositivo en el puerto 4 |
-| `Microphone` | true | Usar el micrófono (las teclas de depuración funcionan siempre) |
-| `CaptureDevice` | "" | Parte del nombre del dispositivo de entrada (`aoc-mic-probe --list` los lista); vacío = el predeterminado |
-| `Transpose` | 0 | Semitonos que se suman a las notas objetivo, p. ej. `-12` para una ocarina una octava más grave |
-| `ToleranceCents` | 60 | Cuánto puede alejarse una altura de la nota objetivo |
-| `MinRms` | 0.01 | Nivel de entrada por debajo del cual no hay nota |
-| `YinThreshold` | 0.20 | Exigencia del detector (más bajo = más exigente) |
-| `MinFrequency` / `MaxFrequency` | 0 / 0 | Rango extra de búsqueda en Hz. El rango siempre cubre las notas objetivo; esto solo lo amplía |
-| `StickyNotes` | false | *Experimental, solo para silbar/tararear.* Mantiene la nota a través del vibrato y los glissandos. Empeora la ocarina |
-| `HoldMs` | 0 | *Experimental, solo para silbar/tararear.* Rellena cortes de altura de hasta esta duración (ms). Une notas repetidas de ocarina |
-| `BackendPlugin` | mupen64plus-input-sdl | Plugin de entrada para los mandos 1-3 (nombre de fichero o ruta) |
-| `DebugLog` | false | Registrar las notas detectadas y el tráfico del puerto 4 |
-| `KeyNote*` / `KeyDisconnect` / `KeyMicToggle` | | Teclas de depuración, como scancodes de SDL2 |
+| Ajuste                                              | Por defecto           | Significado                                                                                                                        |
+| --------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `Enabled`                                         | true                  | Emular el dispositivo en el puerto 4                                                                                               |
+| `Microphone`                                      | true                  | Usar el micrófono (las teclas de depuración funcionan siempre)                                                                   |
+| `CaptureDevice`                                   | ""                    | Parte del nombre del dispositivo de entrada (`aoc-mic-probe --list` los lista); vacío = el predeterminado                       |
+| `Transpose`                                       | 0                     | Semitonos que se suman a las notas objetivo, p. ej.`-12` para una ocarina una octava más grave                                  |
+| `ToleranceCents`                                  | 60                    | Cuánto puede alejarse una altura de la nota objetivo                                                                              |
+| `MinRms`                                          | 0.01                  | Nivel de entrada por debajo del cual no hay nota                                                                                   |
+| `YinThreshold`                                    | 0.20                  | Exigencia del detector (más bajo = más exigente)                                                                                 |
+| `MinFrequency` / `MaxFrequency`                 | 0 / 0                 | Rango extra de búsqueda en Hz. El rango siempre cubre las notas objetivo; esto solo lo amplía                                    |
+| `StickyNotes`                                     | false                 | *Experimental, solo para silbar/tararear.* Mantiene la nota a través del vibrato y los glissandos. Empeora la ocarina           |
+| `HoldMs`                                          | 0                     | *Experimental, solo para silbar/tararear.* Rellena cortes de altura de hasta esta duración (ms). Une notas repetidas de ocarina |
+| `BackendPlugin`                                   | mupen64plus-input-sdl | Plugin de entrada para los mandos 1-3 (nombre de fichero o ruta)                                                                   |
+| `DebugLog`                                        | false                 | Registrar las notas detectadas y el tráfico del puerto 4                                                                          |
+| `KeyNote*` / `KeyDisconnect` / `KeyMicToggle` |                       | Teclas de depuración, como scancodes de SDL2                                                                                      |
 
 `aoc-mic-probe`, incluido con el plugin, muestra lo que oiría el juego sin abrir el emulador. Ejecútalo desde una
 terminal y toca: las líneas que empiezan por `>>` son las notas que registraría el juego.
@@ -183,16 +184,16 @@ aoc-mic-probe --raw --log ocarina.csv           # muestra también cada cambio d
 
 En el código, la función de la ROM y su protocolo del puerto 4 se llaman *Audio Ocarina* (`AUDIO_OCARINA=1`, `aoc_*`).
 
-| Ruta | Contenido |
-|------|-----------|
-| `rom/` | El ROM hack, como cambios sobre zeldaret/oot: `UPSTREAM_COMMIT`, `audio-ocarina.patch` (ficheros originales modificados) y `files/` (ficheros nuevos) |
-| `tools/` | `setup-oot.sh` (crea `oot/` a partir de `rom/`), `export-oot.sh` (vuelca `oot/` a `rom/`), `make-release.sh` (genera el `.bps`) |
-| `emulator/mupen64plus-input-ocarina/` | Plugin proxy de entrada para Mupen64Plus y `aoc-mic-probe` |
-| `firmware/pico/` | Firmware del ORU (Raspberry Pi Pico) |
-| `protocol/protocol.md` | El protocolo Joybus del puerto 4, común a la ROM, el plugin y el firmware |
-| `docs/architecture.md` | Visión general del diseño |
-| `docs/doxygen/` | Configuración de Doxygen para el código del plugin y del ROM hack (`build_docs.sh`) |
-| `tests/` | Tests unitarios en el PC: filtro de notas de la ROM, modelo del dispositivo, detector de altura, DSP del firmware |
+| Ruta                                    | Contenido                                                                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rom/`                                | El ROM hack, como cambios sobre zeldaret/oot:`UPSTREAM_COMMIT`, `audio-ocarina.patch` (ficheros originales modificados) y `files/` (ficheros nuevos) |
+| `tools/`                              | `setup-oot.sh` (crea `oot/` a partir de `rom/`), `export-oot.sh` (vuelca `oot/` a `rom/`), `make-release.sh` (genera el `.bps`)            |
+| `emulator/mupen64plus-input-ocarina/` | Plugin proxy de entrada para Mupen64Plus y`aoc-mic-probe`                                                                                                |
+| `firmware/pico/`                      | Firmware del ORU (Raspberry Pi Pico)                                                                                                                       |
+| `protocol/protocol.md`                | El protocolo Joybus del puerto 4, común a la ROM, el plugin y el firmware                                                                                 |
+| `docs/architecture.md`                | Visión general del diseño                                                                                                                                |
+| `docs/doxygen/`                       | Configuración de Doxygen para el código del plugin y del ROM hack (`build_docs.sh`)                                                                    |
+| `tests/`                              | Tests unitarios en el PC: filtro de notas de la ROM, modelo del dispositivo, detector de altura, DSP del firmware                                          |
 
 ### El checkout del decomp
 

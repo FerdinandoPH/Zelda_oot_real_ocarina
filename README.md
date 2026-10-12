@@ -31,7 +31,7 @@ Download the files from the [latest release](../../releases/latest).
 
 ### 1. Patch your ROM
 
-You need *The Legend of Zelda: Ocarina of Time* **(USA) version 1.0** in `.z64` format (big-endian):
+You need a legally obtained ROM copy of *The Legend of Zelda: Ocarina of Time* **(USA) version 1.0** in `.z64` format (big-endian):
 
 |       |                                              |
 | ----- | -------------------------------------------- |
@@ -104,8 +104,10 @@ For example, Zelda's Lullaby is U O N U O N, with a short gap between the notes.
 
 ### 2b. On a real N64 (ORU)
 
-1. Build the ORU: a Raspberry Pi Pico, Pico W, Pico 2 or Pico 2 W, an INMP441 microphone module, a Schottky diode
-   and an N64 controller plug (you'll need to clip it and solder the wires to the Pico). The wiring is in [firmware/pico/README.md](firmware/pico/README.md#wiring).
+![The ORU on a breadboard: a Raspberry Pi Pico, an INMP441 microphone and a cut N64 controller cable soldered to jumper wires](docs/img/oru.jpg)
+
+1. Build the ORU: a Raspberry Pi Pico, Pico W, Pico 2 or Pico 2 W, an INMP441 microphone module, an optional
+   Schottky diode and an N64 controller plug (you'll need to clip it and solder the wires to the Pico). The wiring is in [firmware/pico/README.md](firmware/pico/README.md#wiring).
 2. Unzip `oru-firmware.zip`. Hold **BOOTSEL**, plug the Pico into USB, and copy the `.uf2` for your
    board (`pico`, `pico_w`, `pico2` or `pico2_w`) onto the drive that appears.
 3. Plug the ORU into **controller port 4** and run the patched ROM from a flash cart.
@@ -152,7 +154,7 @@ The plugin settings are in the `[Input-Ocarina]` section of `mupen64plus.cfg` (`
 | `Enabled`                                         | true                  | Emulate the device on port 4                                                                                           |
 | `Microphone`                                      | true                  | Use the microphone (the debug keys always work)                                                                        |
 | `CaptureDevice`                                   | ""                    | Part of the name of the input device to use (`aoc-mic-probe --list` lists them); empty = default                     |
-| `Transpose`                                       | 0                     | Semitones added to the target notes, e.g. `-12` for an ocarina one octave lower                                       |
+| `Transpose`                                       | 0                     | Semitones added to the target notes, e.g.`-12` for an ocarina one octave lower                                       |
 | `ToleranceCents`                                  | 60                    | How far from a target note a pitch may be                                                                              |
 | `MinRms`                                          | 0.01                  | Input level below which there is no note                                                                               |
 | `YinThreshold`                                    | 0.20                  | Pitch strictness (lower = stricter)                                                                                    |
@@ -181,9 +183,9 @@ In the code, the ROM feature and its port 4 protocol are called *Audio Ocarina* 
 
 | Path                                    | Contents                                                                                                                                           |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rom/`                                | The ROM hack, as changes to zeldaret/oot: `UPSTREAM_COMMIT`, `audio-ocarina.patch` (modified vanilla files) and `files/` (new files)          |
+| `rom/`                                | The ROM hack, as changes to zeldaret/oot:`UPSTREAM_COMMIT`, `audio-ocarina.patch` (modified vanilla files) and `files/` (new files)          |
 | `tools/`                              | `setup-oot.sh` (creates `oot/` from `rom/`), `export-oot.sh` (writes `oot/` back to `rom/`), `make-release.sh` (builds the `.bps`) |
-| `emulator/mupen64plus-input-ocarina/` | Mupen64Plus proxy input plugin and `aoc-mic-probe`                                                                                                |
+| `emulator/mupen64plus-input-ocarina/` | Mupen64Plus proxy input plugin and`aoc-mic-probe`                                                                                                |
 | `firmware/pico/`                      | ORU firmware (Raspberry Pi Pico)                                                                                                                   |
 | `protocol/protocol.md`                | The port 4 Joybus protocol that the ROM, the plugin and the firmware share                                                                         |
 | `docs/architecture.md`                | Design overview                                                                                                                                    |
